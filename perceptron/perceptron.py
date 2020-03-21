@@ -6,6 +6,7 @@ import random
 import activation_functions as af
 import regularization as reg
 import learning_rate as lr
+import utils
 
 class network:
     def __init__(self, parameters, act_funcs, training_data, labels):
@@ -36,15 +37,15 @@ class network:
        self.z_values = np.array([np.empty((i, )) for i in self.parameters])
        self.z_primes = np.array([np.empty((i , )) for i in self.parameters])
        self.activations = np.array([np.empty((i, )) for i in self.parameters]) #the output of the network at each layer. The activation of the kth neuron in the ith layer is activations[i][k].
-       self.learning_rate = 0.001
+       self.learning_rate = 0
        self.index = 0 #which piece of training data the network is looking at
 
-       self.size = training_data.shape[0]
-       self.trials = 1
-       self.successes = 0
-       self.cost = 0
+       self.size = training_data.shape[0] #the number of pieces of training data in an epoch
+       self.trials = 1 #running total of pieces of training data the network has seen (resets every epoch)
+       self.successes = 0 #running total of correct guesses (resets every epoch)
+       self.cost = 0 #cost of an individual piece of training data
        self.costs = [] #used to compute average cost
-       self.epoch = 1
+       self.epoch = 1 #current epoch
        self.training = True
 
        #these are for minibatch gradient descent.
@@ -54,12 +55,11 @@ class network:
        self.weights_batch = np.array([np.zeros((self.parameters[i+1], self.parameters[i])) for i in range(self.number_of_layers - 1)])
        self.biases_batch = np.array([np.zeros((i, )) for i in self.parameters])
 
-       self.batch_clock = 1
-       self.iterations = 0
+       self.batch_clock = 0
+       self.iterations = 0 #an "iteration" is the completion of a minibatch; e.g. if there are 10,000 pieces of training data and the minibatch is 20, then there are 500 iterations in an epoch.
 
     #looks at a piece of training data and assigns the activation kth neuron of the input layer to the kth pixel value of the piece of training data.
     def input_layer(self):
-        #the first element in the mnist data set is the label, not a pixel value, so we discard it, and then assign the pixel values to the activations of the input neurons.
         self.activations[0] = list(zip(*self.deck))[1][self.index]
 
     #computes the activations of all the neurons in the layers subsequent to the input layer.
@@ -103,13 +103,24 @@ class network:
          f"{(self.successes/self.trials)*100:.3f}%", " | ", "Guess: ", decision, " Answer: ", answer, " | ", "Avg cost: ", f"{sum(self.costs)/len(self.costs):.10f}", \
          " | ", "Learning rate: ", round(self.learning_rate, 5))
 
+    #adjusts the learning rate depending on the learning rate function specified.
+    def adjust_learning_rate(self, lr_func, lr_params, batch_size):
+        if utils.batch_check(self, batch_size): #if the batch is depleted...
+            #func_dict associates a string with a learning function via a dictionary.
+            #we use the dictionary to look up the learning function we want, and send it the user's arguments.
+            if (type(lr_params) != tuple):
+                self.learning_rate = lr.func_dict()[lr_func](lr_params, batch_size)
+            else:
+                self.learning_rate = lr.func_dict()[lr_func](*lr_params, batch_size)
+
     #At the beginning of each epoch, the training data is shuffled, so simply portioning up its array into chunks of batch_size is taking a random sample.
     #If a batch size is not specified, it defaults to stochastic gradient descent (i.e. the batch_size is 1.)
     #batch_clock counts until we've exhausted the current batch.
     #When that happens, the weights and biases of the network are updated, and the weights and biases batches are reset.
     #This also implements momentum. If beta is not specified, momentum is turned off.
-    def batch(self, batch_size=1, beta=0):
-        if (self.batch_clock % batch_size == 0): #if the current batch is exhausted...
+    def batch(self, batch_size, beta):
+        if utils.batch_check(self, batch_size): #if the current batch is exhausted...
+            self.iterations += 1
             if (beta != 0): #if momentum is enabled...
                 print("uh, come back later!")
                 #self.Vw = beta*self.Vw_prev + ((1 - beta)/batch_size)*self.weights_batch
@@ -132,9 +143,7 @@ class network:
         da_db = self.z_primes[layer][neuron]
 
         if (layer < L):
-            #dnext_dcurrent = np.prod([sum(np.dot(self.weights[laye+alpha].transpose(), self.z_primes[layer+alpha+1]) for alpha in range(L - layer))])
-            sums = [sum(np.dot(self.weights[layer+alpha].transpose(), self.z_primes[layer+alpha+1])) for alpha in range(L - layer)]
-            dnext_dcurrent = np.prod(sums)
+            dnext_dcurrent = np.prod([sum(np.dot(self.weights[layer+alpha].transpose(), self.z_primes[layer+alpha+1]) for alpha in range(L - layer))])
 
         else:
             dc_dal = -1*(self.desired_output[neuron] - self.activations[-1][neuron])
@@ -149,8 +158,6 @@ class network:
     def backprop(self):
         #the 0th layer of the reversed list is the last layer of the network. This makes my brain hurt, so  mirror flips the index sent to gradient_descent back to normal.
         mirror = self.number_of_layers - 1
-    #    self.z_primes = np.array([vectorized_sig_prime(self.z_values[i]) for i in range(self.number_of_layers)])
-
         for layer in range(1, len(self.parameters)):
             activate = af.check_activation_function(self, layer, 1)
             self.z_primes[layer] = np.array(activate(self.z_values[layer]))
@@ -160,9 +167,6 @@ class network:
             for neuron in list(reversed(range(backprop_layer[layer]))):
                 self.gradient_descent(neuron, mirror)
             mirror -= 1
-
-    def learning_rate(self, function):
-        function()
 
     #trains for how many epochs specified. rolls over the index of the data each new epoch.
     #reshuffles the data every epoch for GD.
@@ -177,6 +181,7 @@ class network:
             self.index = 0
             self.trials = 1
             self.successes = 0
+            self.iterations = 0
             self.costs.clear()
 
             for i in range(len(self.weights)):
@@ -190,13 +195,14 @@ class network:
             else:
                  random.shuffle(self.deck)
 
-    def train(self, learning_rate_function, number_of_epochs):
+    #beta is for smoothing
+    def train(self, lr_func="constant", lr_params="(0.1)", batch_size=1, epochs=10, beta=0, dropout=[]):
         while self.training:
+            self.adjust_learning_rate(lr_func, lr_params, batch_size)
             self.input_layer()
-            self.feedforward([0.1])
+            self.feedforward(dropout)
             self.compute_cost()
             self.backprop()
-            self.batch(20)
-        #    self.learning_rate(learning_rate_function)
+            self.batch(batch_size, beta)
             self.evaluate()
-            self.janitor(number_of_epochs)
+            self.janitor(epochs)

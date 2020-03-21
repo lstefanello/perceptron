@@ -36,7 +36,7 @@ def leaky_relu_prime(z):
     elif (z >= 0):
         return 1
 
-def check_activation_function(self, layer, order):
+def check_activation_function(model, layer, order):
     if (order == 0):
         switcher = {
             "sig": np.vectorize(sigmoid),
@@ -51,5 +51,5 @@ def check_activation_function(self, layer, order):
             "l_relu": np.vectorize(leaky_relu_prime),
             "tanh": np.vectorize(tanh_prime),
         }
-    func = switcher.get(self.act_funcs[layer-1])
+    func = switcher.get(model.act_funcs[layer-1])
     return func

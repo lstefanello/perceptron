@@ -1,16 +1,20 @@
 import numpy as np
+import utils
 
-def warm_restarts(self, lower_bound, upper_bound, batch_size, cycles_per_epoch):
-    if (self.batch_clock % batch_size == 0):
-        B = np.floor(np.floor(self.size/batch_size)*(1/cycles_per_epoch))
-        self.iterations += 1
-        self.learning_rate = lower_bound + (1/2)*(upper_bound - lower_bound)*(1 + np.cos((self.iterations/B) * np.pi))
+def constant(learning_rate, batch_size):
+    return learning_rate
 
-        if(self.iterations >= B):
-            self.iterations = 0
+#lower bound, upper bound, batch_size.
+def warm_restarts(model, lb, ub, bs):
+    if (utils.batch_check(model, bs)):
+        B = np.floor(np.floor(model.size/bs))
+        adjusted_rate = lb + (1/2)*(ub - lb)*(1 + np.cos((model.iterations/B) * np.pi))
 
-def check_lr_fuction(self):
-    #switcher {
-    #    "warm_restarts":
-    #}
-    print(":)")
+        return adjusted_rate
+
+def func_dict():
+    dict = {
+        "constant": constant,
+        "warm restarts": warm_restarts,
+    }
+    return dict
