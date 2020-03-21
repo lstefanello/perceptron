@@ -196,7 +196,7 @@ class network:
                  random.shuffle(self.deck)
 
     #beta is for smoothing
-    def train(self, lr_func="constant", lr_params="(0.1)", batch_size=1, epochs=10, beta=0, dropout=[]):
+    def train(self, lr_func="constant", lr_params=0.1, batch_size=1, epochs=10, beta=0, dropout=[]):
         while self.training:
             self.adjust_learning_rate(lr_func, lr_params, batch_size)
             self.input_layer()
