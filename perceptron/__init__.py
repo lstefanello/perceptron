@@ -1,1 +1,1 @@
-import perceptron
+from perceptron import perceptron
