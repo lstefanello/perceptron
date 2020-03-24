@@ -1,6 +1,7 @@
 """
 author: lincoln stefanello
 """
+import matplotlib.pyplot as plt
 import numpy as np
 import random
 import activation_functions as af
@@ -9,16 +10,17 @@ import learning_rate as lr
 import utils
 
 class network:
-    def __init__(self, parameters, act_funcs, training_data, labels):
+    def __init__(self, parameters, act_funcs, training_data, labels, cost_func="quadratic"):
        #a list describing the structure of the network. The length of the list is the number of layers, and each integer in the list is the number of neurons in the layer.
        self.parameters = parameters
        self.number_of_layers = len(self.parameters)
        self.act_funcs = act_funcs
+       self.cost_func = cost_func
 
        self.deck = list(zip(labels, training_data))
        random.shuffle(self.deck)
        self.labels, self.training_data = zip(*self.deck)
-       self.desired_output = np.zeros(10)
+       self.desired_output = np.zeros((len(np.unique(self.labels)), ))
 
        #sets the biases for each neuron in the network as zeros, skipping the first layer because it is the input layer.
        #Biases are indexed the same as neurons; e.g. the kth neuron in the ith layer has bias[i][k].
@@ -29,7 +31,17 @@ class network:
        #e.g. W^i is the matrix of weights that connects the neurons in layer i with the neurons in layer i+1.
        #(w_j,k)^i is the weight connecting the jth neuron in layer i+1 to the kth neuron in layer i.
        #So, the activation a neuron k belonging to layer i takes in the vector of weights w[i-1][k]. (the kth row of the weight matrix between this layer and the previous).
-       self.weights = np.array([np.random.randn(self.parameters[i+1], self.parameters[i])*np.sqrt(2/(self.parameters[i]+self.parameters[i+1])) for i in range(self.number_of_layers - 1)])
+       self.weights = np.array([np.random.randn(self.parameters[i+1], self.parameters[i]) for i in range(self.number_of_layers - 1)])
+
+       for matrix in range(self.number_of_layers - 1):
+           switcher = {
+               "sigmoid": np.sqrt(2/(self.parameters[matrix]+self.parameters[matrix+1])),
+               "softmax": 1,
+               "relu": np.sqrt(2/self.parameters[matrix+1]),
+               "l_relu": np.sqrt(2/self.parameters[matrix+1]),
+               "tanh": np.sqrt(1/self.parameters[matrix+1]),
+               }
+           self.weights[matrix] *= switcher.get(self.act_funcs[matrix])
 
        #the z value is the dot product of weights & activations + bias quantity that gets sent to the squishification function.
        #The z value of the kth neuron in the ith layer is z_values[i][k].
@@ -58,9 +70,22 @@ class network:
        self.batch_clock = 0
        self.iterations = 0 #an "iteration" is the completion of a minibatch; e.g. if there are 10,000 pieces of training data and the minibatch is 20, then there are 500 iterations in an epoch.
 
+    #adjusts the learning rate depending on the learning rate function specified.
+    def adjust_learning_rate(self, lr_func, lr_params, batch_size):
+        if utils.batch_check(self, batch_size): #if the batch is depleted...
+            #func_dict associates a string with a learning function via a dictionary.
+            #we use the dictionary to look up the learning function we want, and send it the user's arguments.
+            if (type(lr_params) != tuple):
+                self.learning_rate = lr.func_dict()[lr_func](lr_params, batch_size)
+            else:
+                self.learning_rate = lr.func_dict()[lr_func](*lr_params, batch_size)
+
     #looks at a piece of training data and assigns the activation kth neuron of the input layer to the kth pixel value of the piece of training data.
     def input_layer(self):
-        self.activations[0] = list(zip(*self.deck))[1][self.index]
+        self.activations[0] = np.array(list(zip(*self.deck))[1][self.index])
+        #pixels = self.activations[0].reshape((28, 28))
+        #plt.imshow(pixels, cmap='cool')
+        #plt.show()
 
     #computes the activations of all the neurons in the layers subsequent to the input layer.
     #the kth row of matrix W^i contains every weight that attaches to the kth neuron in layer i+1,
@@ -69,21 +94,29 @@ class network:
     #to do this for an entire layer at a time, we matrix multiply W_(i-1) with activations and add the bias vector.
     def feedforward(self, dropout_rate=[]):
         for layer in range(1, self.number_of_layers): #iterates through every layer, skipping the input layer.
-            activate = af.check_activation_function(self, layer, 0)
             #if dropout rates are not specified, default to having dropout turned off.
             #(Or, shut it off if we're in the output layer.)
             #the dropout list applies to the hidden layers, so the indexing is behind;
-            #e.g. the 0th number in the dropout list is the dropout rate for the 1st layer.
-            if (not dropout_rate) or (layer == self.number_of_layers - 1):
-                self.z_values[layer] = np.dot(self.weights[layer-1], self.activations[layer-1]) + self.biases[layer]
-                self.activations[layer] = activate(self.z_values[layer])
+            #e.g. the 0th number in the dropout list is the dropout rate for the 1st layer
+            if (layer == self.number_of_layers - 1 and self.act_funcs[-1] == "softmax"):
+                self.z_values[-1] = self.activations[-2]
+                add = sum([np.exp(i) for i in self.z_values[-1]])
+                activate = np.vectorize(af.func_dict(0)["softmax"])
+
+                self.activations[-1] = activate(self.z_values[-1], add)
+
             else:
-                self.activations[layer], self.z_values[layer] = reg.dropout(self, activate, layer, dropout_rate[layer-1])
+                activate = np.vectorize(af.func_dict(0)[self.act_funcs[layer-1]])
+                if (not dropout_rate) or (layer == self.number_of_layers - 1):
+                    self.z_values[layer] = np.matmul(self.weights[layer-1], self.activations[layer-1]) + self.biases[layer]
+                    self.activations[layer] = activate(self.z_values[layer])
+                else:
+                    self.activations[layer], self.z_values[layer] = reg.dropout(self, activate, layer, dropout_rate[layer-1])
 
     #computes the cost of an individual piece of training data and the overall average cost. Is this comment redundant?
     def compute_cost(self):
         object = int(list(zip(*self.deck))[0][self.index])
-        self.desired_output = np.zeros(10)
+        self.desired_output.fill(0)
         self.desired_output[object] = 1
 
         self.cost = (1/2)*np.linalg.norm(self.desired_output - self.activations[-1])**2 #individual cost for an individual piece of training data
@@ -102,16 +135,6 @@ class network:
         print("Epoch: ", self.epoch, " | ", self.successes, " correct out of ", self.trials, " for a rate of: ", \
          f"{(self.successes/self.trials)*100:.3f}%", " | ", "Guess: ", decision, " Answer: ", answer, " | ", "Avg cost: ", f"{sum(self.costs)/len(self.costs):.10f}", \
          " | ", "Learning rate: ", round(self.learning_rate, 5))
-
-    #adjusts the learning rate depending on the learning rate function specified.
-    def adjust_learning_rate(self, lr_func, lr_params, batch_size):
-        if utils.batch_check(self, batch_size): #if the batch is depleted...
-            #func_dict associates a string with a learning function via a dictionary.
-            #we use the dictionary to look up the learning function we want, and send it the user's arguments.
-            if (type(lr_params) != tuple):
-                self.learning_rate = lr.func_dict()[lr_func](lr_params, batch_size)
-            else:
-                self.learning_rate = lr.func_dict()[lr_func](*lr_params, batch_size)
 
     #At the beginning of each epoch, the training data is shuffled, so simply portioning up its array into chunks of batch_size is taking a random sample.
     #If a batch size is not specified, it defaults to stochastic gradient descent (i.e. the batch_size is 1.)
@@ -133,40 +156,41 @@ class network:
             else:
                 self.weights -= (self.learning_rate/batch_size)*self.weights_batch
                 self.biases -= (self.learning_rate/batch_size)*self.biases_batch
-            for i in range(self.number_of_layers - 1): self.weights_batch[i].fill(0); self.biases_batch[i].fill(0)
+            for i in range(len(self.weights_batch)): self.weights_batch[i].fill(0)
+            for i in range(len(self.biases_batch)): self.biases_batch[i].fill(0)
         self.batch_clock += 1
-
-    #for every neuron in the network subsequent to the input layer, we adjust its weights and biases by a small amount proportional to the negative of d_C/d_w or dC_/d_b.
-    def gradient_descent(self, neuron, layer):
-        L = self.number_of_layers - 1
-        dc_dal = sum(-1*(self.desired_output - self.activations[-1]))
-        da_db = self.z_primes[layer][neuron]
-
-        if (layer < L):
-            dnext_dcurrent = np.prod([sum(np.dot(self.weights[layer+alpha].transpose(), self.z_primes[layer+alpha+1]) for alpha in range(L - layer))])
-
-        else:
-            dc_dal = -1*(self.desired_output[neuron] - self.activations[-1][neuron])
-            dnext_dcurrent = 1
-
-        gradient = da_db*dnext_dcurrent*dc_dal
-
-        self.biases_batch[layer][neuron] += gradient
-        self.weights_batch[layer-1][neuron] += np.array(self.activations[layer-1])*gradient
 
     #goes backwards through the network, sending each neuron it iterates through to the gradient descent function.
     def backprop(self):
-        #the 0th layer of the reversed list is the last layer of the network. This makes my brain hurt, so  mirror flips the index sent to gradient_descent back to normal.
-        mirror = self.number_of_layers - 1
-        for layer in range(1, len(self.parameters)):
-            activate = af.check_activation_function(self, layer, 1)
-            self.z_primes[layer] = np.array(activate(self.z_values[layer]))
+        L = self.number_of_layers - 1
+        for i in range(1, len(self.z_values)):
+            if (i == self.number_of_layers - 1 and self.act_funcs[-1] == "softmax"):
+                add = sum([np.exp(i) for i in self.z_values[-1]])
+                activate = np.vectorize(af.func_dict(1)[self.act_funcs[i-1]])
+                self.z_primes[-1] = activate(self.z_values[-1], add)
+            else:
+                activate = np.vectorize(af.func_dict(1)[self.act_funcs[i-1]])
+                self.z_primes[i] = activate(self.z_values[i])
 
+        dc_dal = sum(-1*(self.desired_output - self.activations[-1]))
+
+        self.biases_batch[L] += self.z_primes[L]*-1*(self.desired_output - self.activations[-1])
+        for neuron in range(self.parameters[-1]):
+            self.weights_batch[L-1][neuron] += self.activations[L-1]*-1*(self.desired_output[neuron] - self.activations[-1][neuron])
+
+        change = []
         backprop_layer = list(reversed(self.parameters[1:]))
-        for layer in range(len(backprop_layer)):
-            for neuron in list(reversed(range(backprop_layer[layer]))):
-                self.gradient_descent(neuron, mirror)
-            mirror -= 1
+        distance = 1
+        for layer in range(len(backprop_layer)-1):
+            change.append(sum(np.matmul(self.weights[L-distance].transpose(), self.z_primes[L-distance+1])))
+            dcurrent_dprev = np.prod(change)
+            cumulative_change = dcurrent_dprev*dc_dal
+
+            self.biases_batch[L-distance] += self.z_primes[L-distance]*cumulative_change
+            for neuron in range(backprop_layer[layer]):
+                self.weights_batch[L-distance-1][neuron] += self.activations[L-distance-1]*self.z_primes[L-distance][neuron]*cumulative_change
+
+            distance += 1
 
     #trains for how many epochs specified. rolls over the index of the data each new epoch.
     #reshuffles the data every epoch for GD.

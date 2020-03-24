@@ -14,7 +14,7 @@ def warm_restarts(model, lb, ub, bs):
 
 def func_dict():
     dict = {
-        "constant": constant,
+        "const": constant,
         "warm restarts": warm_restarts,
     }
     return dict

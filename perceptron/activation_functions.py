@@ -36,20 +36,27 @@ def leaky_relu_prime(z):
     elif (z >= 0):
         return 1
 
-def check_activation_function(model, layer, order):
+def softmax(z, add):
+    return np.exp(z)/add
+
+def softmax_prime(z, add):
+    return (np.exp(z)/add - (np.exp(z)/add)**2)
+
+def func_dict(order):
     if (order == 0):
-        switcher = {
-            "sig": np.vectorize(sigmoid),
-            "relu": np.vectorize(relu),
-            "l_relu": np.vectorize(leaky_relu),
-            "tanh": np.vectorize(tanh),
+        dict = {
+            "sigmoid": sigmoid,
+            "relu": relu,
+            "l_relu": leaky_relu,
+            "tanh": tanh,
+            "softmax": softmax,
         }
     elif (order == 1):
-        switcher = {
-            "sig": np.vectorize(sigmoid_prime),
-            "relu": np.vectorize(relu_prime),
-            "l_relu": np.vectorize(leaky_relu_prime),
-            "tanh": np.vectorize(tanh_prime),
+        dict = {
+            "sigmoid": sigmoid_prime,
+            "relu": relu_prime,
+            "l_relu": leaky_relu_prime,
+            "tanh": tanh_prime,
+            "softmax": softmax_prime,
         }
-    func = switcher.get(model.act_funcs[layer-1])
-    return func
+    return dict
