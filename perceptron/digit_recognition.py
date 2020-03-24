@@ -10,9 +10,9 @@ def main():
     labels = load_data[:,0]
     #then we remove the labels from the data the network trains on
     training_data = np.delete(load_data, 0, 1)
-    network = pc.network([784, 1000, 1000, 10], ("relu", "relu", "sigmoid"), training_data, labels)
+    network = pc.network([784, 800, 10], ("sigmoid", "sigmoid"), training_data, labels)
     learn = (network, 0.0001, 0.001)
     #network.train(lr_func="warm restarts", lr_params=learn, batch_size=20, epochs=30)
-    network.train(lr_func="const", lr_params=0.0001, dropout=[], batch_size=20, epochs=30)
+    network.train(lr_func="const", lr_params=0.1, batch_size=20, epochs=30)
 
 main()
