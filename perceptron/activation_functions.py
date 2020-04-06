@@ -13,34 +13,65 @@ def tanh_prime(z):
     return 1 - tanh(z)**2
 
 def relu(z):
-    if (z < 0):
-        return 0
-    elif (z >= 0):
-        return z
+    def comp(x):
+        if (x >= 0):
+            return x
+        else:
+            return 0
+    return np.array([comp(i) for i in z])
 
 def relu_prime(z):
-    if (z < 0):
-        return 0
-    elif (z >= 0):
-        return 1
+    def comp(x):
+        if (x < 0):
+             return 0
+        elif (x >= 0):
+            return 1
+
+    return np.array([comp(i) for i in z])
 
 def leaky_relu(z):
-    if (z < 0):
-        return 0.1*z
-    elif (z >= 0):
-        return z
+    def comp(x):
+        if (x < 0):
+            return 0.1*x
+        elif (x >= 0):
+            return x
+    return np.array(comp(i) for i in z)
 
 def leaky_relu_prime(z):
-    if (z < 0):
-        return 0.1
-    elif (z >= 0):
-        return 1
+    def comp(x):
+        if (x < 0):
+            return 0.1
+        elif (x >= 0):
+            return 1
+    return np.array(comp(i) for i in z)
 
-def softmax(z, add):
-    return np.exp(z)/add
+def softmax(z):
+    return np.exp(z)/sum(np.exp(z))
 
-def softmax_prime(z, add):
-    return (np.exp(z)/add - (np.exp(z)/add)**2)
+def softmax_prime(z):
+    #this is the diagonal of the jacobian.
+    return softmax(z)*(1-softmax(z))
+
+def softmax_input_change(z):
+    dz_da = np.zeros((z.shape[0], z.shape[0]))
+    for i in range(len(z)):
+        tmp = []
+        if (z[i] == 0):
+            for j in z:
+                if (j == 0):
+                    tmp.append(0)
+                else:
+                    tmp.append(-1)
+        else:
+            for j in range(len(z)):
+                if (i == j):
+                    tmp.append(1)
+                else:
+                    tmp.append(0)
+
+        dz_da[:,i] += np.array(tmp)
+
+    return dz_da.diagonal()
 
 def func_dict(order):
     if (order == 0):
@@ -49,7 +80,6 @@ def func_dict(order):
             "relu": relu,
             "l_relu": leaky_relu,
             "tanh": tanh,
-            "softmax": softmax,
         }
     elif (order == 1):
         dict = {
