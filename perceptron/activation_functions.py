@@ -14,7 +14,7 @@ def tanh_prime(z):
 
 def relu(z):
     def comp(x):
-        if (x >= 0):
+        if (x > 0):
             return x
         else:
             return 0

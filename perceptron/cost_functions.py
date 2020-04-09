@@ -11,7 +11,7 @@ def cross_entropy(model):
     return np.dot(-1*model.desired_output, log(model.activations[-1]))
 
 def cross_entropy_derivative(model):
-    return -1*model.desired_output/model.activations[-1]
+    return model.activations[-1] - model.desired_output
 
 def func_dict(order):
     if (order == 0):

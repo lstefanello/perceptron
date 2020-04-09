@@ -10,16 +10,19 @@ import cost_functions as cf
 import utils
 
 class network:
-    def __init__(self, parameters, act_funcs, training_data, labels):
+    def __init__(self, parameters, act_funcs, training_data, testing_data):
        #a list describing the structure of the network. The length of the list is the number of layers, and each integer in the list is the number of neurons in the layer.
        self.parameters = parameters
        self.number_of_layers = len(self.parameters)
        self.act_funcs = act_funcs
 
-       self.deck = list(zip(labels, training_data))
+       self.deck = list(zip(training_data[1], training_data[0]))
        random.shuffle(self.deck)
        self.labels, self.training_data = zip(*self.deck)
        self.desired_output = np.zeros((len(np.unique(self.labels)), ))
+
+       self.validation_deck = list(zip(testing_data[1], testing_data[0]))
+       self.validating = False
 
        #sets the biases for each neuron in the network as zeros, skipping the first layer because it is the input layer.
        #Biases are indexed the same as neurons; e.g. the kth neuron in the ith layer has bias[i][k].
@@ -51,7 +54,8 @@ class network:
        self.learning_rate = 0
        self.index = 0 #which piece of training data the network is looking at
 
-       self.size = training_data.shape[0] #the number of pieces of training data in an epoch
+       self.size = training_data[1].shape[0] #the number of pieces of training data in an epoch
+       self.validation_size = testing_data[1].shape[0]
        self.trials = 1 #running total of pieces of training data the network has seen (resets every epoch)
        self.successes = 0 #running total of correct guesses (resets every epoch)
        self.cost = 0 #cost of an individual piece of training data
@@ -65,6 +69,8 @@ class network:
        #after the batch is exhausted, the true weights and biases are updated and the batches are reset.
        self.weights_batch = np.array([np.zeros((self.parameters[i+1], self.parameters[i])) for i in range(self.number_of_layers - 1)])
        self.biases_batch = np.array([np.zeros((i, )) for i in self.parameters])
+       self.Vw = np.array([np.zeros((self.parameters[i+1], self.parameters[i])) for i in range(self.number_of_layers - 1)])
+       self.Vb =  np.array([np.zeros((i, )) for i in self.parameters])
 
        self.batch_clock = 0
        self.iterations = 0 #an "iteration" is the completion of a minibatch; e.g. if there are 10,000 pieces of training data and the minibatch is 20, then there are 500 iterations in an epoch.
@@ -75,13 +81,16 @@ class network:
             #func_dict associates a string with a learning function via a dictionary.
             #we use the dictionary to look up the learning function we want, and send it the user's arguments.
             if (type(lr_params) != tuple):
-                self.learning_rate = lr.func_dict()[lr_func](lr_params, batch_size)
+                self.learning_rate = lr.func_dict()[lr_func](self, lr_params, batch_size)
             else:
-                self.learning_rate = lr.func_dict()[lr_func](*lr_params, batch_size)
+                self.learning_rate = lr.func_dict()[lr_func](self, *lr_params, batch_size)
 
     #looks at a piece of training data and assigns the activation kth neuron of the input layer to the kth pixel value of the piece of training data.
     def input_layer(self):
-        self.activations[0] = np.array(list(zip(*self.deck))[1][self.index])
+        if not self.validating:
+            self.activations[0] = np.array(list(zip(*self.deck))[1][self.index])
+        else:
+            self.activations[0] = np.array(list(zip(*self.validation_deck))[1][self.index])
 
     #computes the activations of all the neurons in the layers subsequent to the input layer.
     #the kth row of matrix W^i contains every weight that attaches to the kth neuron in layer i+1,
@@ -96,14 +105,18 @@ class network:
             else:
                 activate = af.func_dict(0)[self.act_funcs[layer-1]]
                 if (not dropout_rate) or (layer == self.number_of_layers - 1):
-                    self.z_values[layer] = np.dot(self.weights[layer-1], self.activations[layer-1]) + self.biases[layer]
+                    self.z_values[layer] = np.matmul(self.weights[layer-1], self.activations[layer-1]) + self.biases[layer]
                     self.activations[layer] = activate(self.z_values[layer])
                 else:
                     self.activations[layer], self.z_values[layer] = reg.dropout(self, activate, layer, dropout_rate[layer-1])
 
     #computes the cost of an individual piece of training data and the overall average cost. Is this comment redundant?
     def compute_cost(self, cost_func):
-        object = int(list(zip(*self.deck))[0][self.index])
+        if not self.validating:
+            object = int(list(zip(*self.deck))[0][self.index])
+        else:
+            object = int(list(zip(*self.validation_deck))[0][self.index])
+
         self.desired_output.fill(0)
         self.desired_output[object] = 1
 
@@ -115,14 +128,22 @@ class network:
         #the network's decision is the index of the highest number belonging to activation vector of the last layer.
         #if there are two elements that are both the highest, it chooses randomly between them.
         decision = np.random.choice(np.where(self.activations[-1] == np.amax(self.activations[-1]))[0])
-        answer = int(list(zip(*self.deck))[0][self.index]) #extract the label of the training data to compare the decision with
+
+        if not self.validating:
+            answer = int(list(zip(*self.deck))[0][self.index]) #extract the label of the training data to compare the decision with
+        else:
+            answer = int(list(zip(*self.validation_deck))[0][self.index])
 
         if (decision == answer):
             self.successes += 1 #woohoo!
 
-        print("Epoch: ", self.epoch, " | ", self.successes, " correct out of ", self.trials, " for a rate of: ", \
-         f"{(self.successes/self.trials)*100:.3f}%", " | ", "Guess: ", decision, " Answer: ", answer, " | ", "Avg cost: ", f"{sum(self.costs)/len(self.costs):.10f}", \
-         " | ", "Learning rate: ", round(self.learning_rate, 5))
+        if not self.validating:
+            print("Epoch: ", self.epoch, " | ", self.successes, " correct out of ", self.trials, " for a rate of: ", \
+             f"{(self.successes/self.trials)*100:.3f}%", " | ", "Guess: ", decision, " Answer: ", answer, " | ", "Avg cost: ", f"{sum(self.costs)/len(self.costs):.10f}", \
+             " | ", "Learning rate: ", round(self.learning_rate, 5))
+        else:
+            print("Validation", " | ", self.successes, " correct out of ", self.trials, " for a rate of: ", \
+             f"{(self.successes/self.trials)*100:.3f}%", " | ", "Guess: ", decision, " Answer: ", answer, " | ", "Avg cost: ", f"{sum(self.costs)/len(self.costs):.10f}")
 
     #At the beginning of each epoch, the training data is shuffled, so simply portioning up its array into chunks of batch_size is taking a random sample.
     #If a batch size is not specified, it defaults to stochastic gradient descent (i.e. the batch_size is 1.)
@@ -133,14 +154,15 @@ class network:
         if utils.batch_check(self, batch_size): #if the current batch is exhausted...
             self.iterations += 1
             if (beta != 0): #if momentum is enabled...
-                print("uh, come back later!")
-                #self.Vw = beta*self.Vw_prev + ((1 - beta)/batch_size)*self.weights_batch
-                #self.Vb = beta*self.Vb_prev + ((1 - beta)/batch_size)*self.biases_batch
+                if (self.iterations == 1):
+                    self.Vw = self.weights_batch
+                    self.Vb = self.biases_batch
+                elif (self.iterations > 1):
+                    self.Vw = beta*self.Vw + self.weights_batch
+                    self.Vb = beta*self.Vb + self.biases_batch
 
-                #self.weights -= self.learning_rate*self.Vw
-                #self.biases -= self.learning_rate*self.Vb
-
-                #print(self.Vw)
+                self.weights -= (self.learning_rate/batch_size)*self.Vw
+                self.biases -= (self.learning_rate/batch_size)*self.Vb
             else:
                 self.weights -= (self.learning_rate/batch_size)*self.weights_batch
                 self.biases -= (self.learning_rate/batch_size)*self.biases_batch
@@ -149,35 +171,29 @@ class network:
             for i in range(len(self.biases_batch)): self.biases_batch[i].fill(0)
         self.batch_clock += 1
 
+
     def backprop(self, cost_func):
         L = self.number_of_layers - 1
-        #each vector in this list is the change in the cost w/r/t its associated layer
-        #e.g., change[0] is the change in cost w/r/t activations[L]
-        #change[1] is the change in activations[L] w/r/t activations[L-1]
-        #etc ...
-        change = []
-        dc_dal = cf.func_dict(1)[cost_func](self) #the change in the user-specified cost with respect to the activation of the last layer
-        change.append(dc_dal)
+        gradient = cf.func_dict(1)[cost_func](self) #the change in the user-specified cost with respect to the activation of the last layer
         self.z_primes[L] = af.func_dict(1)[self.act_funcs[-1]](self.z_values[L])
+        self.z_primes[L-1] = af.func_dict(1)[self.act_funcs[-2]](self.z_values[L-1])
 
         if (self.act_funcs[-1] != "softmax"): #the softmax layer doesn't have weights or biases, so we don't bother with this.
-            self.biases_batch[L] += dc_dal
-            self.weights_batch[L-1] += dc_dal[:,None]*np.outer(self.z_primes[L], self.activations[L-1])
+            self.biases_batch[L] += gradient*self.z_primes[L]
+            self.weights_batch[L-1] += np.outer(gradient*self.z_primes[L], self.activations[L-1])
 
         for distance in range(L-1):
             if (self.act_funcs[-1] == "softmax" and distance == 0):
-                input_change = af.softmax_input_change(self.z_values[L])
-                dcurrent_dprev = np.multiply(np.multiply(self.z_primes[L], input_change), change[0])
-                self.z_primes[L-1] = af.func_dict(1)[self.act_funcs[-2]](self.z_values[L-1])
+                gradient = af.softmax_input_change(self.z_values[L])*self.z_primes[L]*gradient
             else:
                 self.z_primes[L-distance] = af.func_dict(1)[self.act_funcs[-1-distance]](self.z_values[L-distance])
-                self.z_primes[L-distance-1] = af.func_dict(1)[self.act_funcs[-1-distance-1]](self.z_values[L-distance-1])
-                dcurrent_dprev = np.dot(self.weights[L-distance-1].transpose(), np.multiply(self.z_primes[L-distance], change[distance]))
+                self.z_primes[L-distance-1] = af.func_dict(1)[self.act_funcs[-2-distance]](self.z_values[L-distance-1])
+                gradient = np.matmul(self.weights[L-distance-1].transpose(), self.z_primes[L-distance]*gradient)
 
-            self.biases_batch[L-distance-1] += dcurrent_dprev
-            self.weights_batch[L-distance-2] += dcurrent_dprev[:,None]*np.outer(self.z_primes[L-distance-1], self.activations[L-distance-2])
-            change.append(dcurrent_dprev)
+            self.biases_batch[L-distance-1] += self.z_primes[L-distance-1]*gradient
+            self.weights_batch[L-distance-2] += np.outer(self.z_primes[L-distance-1]*gradient, self.activations[L-distance-2])
 
+    #    for i in range(len(self.weights_batch)-1): print(self.weights_batch[i], i)
     #trains for how many epochs specified. rolls over the index of the data each new epoch.
     #reshuffles the data every epoch for GD.
     #resets the network's accuracy and avg cost
@@ -186,33 +202,49 @@ class network:
         self.index += 1
         self.trials += 1
 
-        if (self.index > self.size - 1):
-            self.epoch += 1
-            self.index = 0
-            self.trials = 1
-            self.successes = 0
-            self.iterations = 0
-            self.costs.clear()
+        if not self.validating:
+            if (self.index > self.size - 1):
+                self.epoch += 1
+                self.index = 0
+                self.trials = 1
+                self.successes = 0
+                self.iterations = 0
+                self.costs.clear()
 
-            for i in range(len(self.weights)):
-                np.savetxt("weights{}.csv".format(i), self.weights[i], delimiter=",")
+                for i in range(len(self.weights)):
+                    np.savetxt("weights{}.csv".format(i), self.weights[i], delimiter=",")
 
-            for i in range(1, len(self.biases)):
-                np.savetxt("biases{}.csv".format(i), self.biases[i], delimiter=",")
+                for i in range(1, len(self.biases)):
+                    np.savetxt("biases{}.csv".format(i), self.biases[i], delimiter=",")
 
-            if(self.epoch > number_of_epochs):
-                self.training = False
-            else:
-                 random.shuffle(self.deck)
+                if(self.epoch > number_of_epochs):
+                    self.training = False
+                else:
+                    self.validating = True
+                    random.shuffle(self.deck)
+        else:
+            if (self.index > self.validation_size - 1):
+                self.index = 0
+                self.trials = 1
+                self.successes = 0
+                self.costs.clear()
+                self.validating = False
 
     #beta is for smoothing
     def train(self, lr_func="constant", lr_params=0.0001, batch_size=1, epochs=10, beta=0, dropout=[], cost_func="quadratic"):
         while self.training:
-            self.adjust_learning_rate(lr_func, lr_params, batch_size)
-            self.input_layer()
-            self.feedforward(dropout)
-            self.compute_cost(cost_func)
-            self.backprop(cost_func)
-            self.batch(batch_size, beta)
-            self.evaluate()
-            self.janitor(epochs)
+            if self.validating:
+                self.input_layer()
+                self.feedforward(dropout)
+                self.compute_cost(cost_func)
+                self.evaluate()
+                self.janitor(epochs)
+            else:
+                self.adjust_learning_rate(lr_func, lr_params, batch_size)
+                self.input_layer()
+                self.feedforward(dropout)
+                self.compute_cost(cost_func)
+                self.backprop(cost_func)
+                self.batch(batch_size, beta)
+                self.evaluate()
+                self.janitor(epochs)
