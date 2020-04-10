@@ -74,6 +74,7 @@ class network:
 
        self.batch_clock = 0
        self.iterations = 0 #an "iteration" is the completion of a minibatch; e.g. if there are 10,000 pieces of training data and the minibatch is 20, then there are 500 iterations in an epoch.
+       self.total_iterations = 0 #doesn't reset every epoch
 
     #adjusts the learning rate depending on the learning rate function specified.
     def adjust_learning_rate(self, lr_func, lr_params, batch_size):
@@ -81,34 +82,42 @@ class network:
             #func_dict associates a string with a learning function via a dictionary.
             #we use the dictionary to look up the learning function we want, and send it the user's arguments.
             if (type(lr_params) != tuple):
-                self.learning_rate = lr.func_dict()[lr_func](self, lr_params, batch_size)
+                self.learning_rate = lr.func_dict()[lr_func](self, lr_params)
             else:
-                self.learning_rate = lr.func_dict()[lr_func](self, *lr_params, batch_size)
+                self.learning_rate = lr.func_dict()[lr_func](self, *lr_params)
 
     #looks at a piece of training data and assigns the activation kth neuron of the input layer to the kth pixel value of the piece of training data.
     def input_layer(self):
         if not self.validating:
             self.activations[0] = np.array(list(zip(*self.deck))[1][self.index])
+            pixels = self
         else:
             self.activations[0] = np.array(list(zip(*self.validation_deck))[1][self.index])
 
     #computes the activations of all the neurons in the layers subsequent to the input layer.
     #the kth row of matrix W^i contains every weight that attaches to the kth neuron in layer i+1,
-    #therefore the z_value to be squished is just the dot product of the vector of activations from the previous layer
+    #therefore the z_value to be activated is just the dot product of the vector of activations from the previous layer
     #with the row vector (w_k)^(i-1) plus the bias.
     #to do this for an entire layer at a time, we matrix multiply W_(i-1) with activations and add the bias vector.
     def feedforward(self, dropout_rate=[]):
         for layer in range(1, self.number_of_layers): #iterates through every layer, skipping the input layer.
             if (layer == self.number_of_layers - 1 and self.act_funcs[-1] == "softmax"):
-                self.z_values[-1] = self.activations[-2] - self.activations[-2].max()
+                self.z_values[-1] = self.activations[-2] - self.activations[-2].max() #softmax has no weights or biases.
                 self.activations[-1] = af.softmax(self.z_values[-1])
             else:
                 activate = af.func_dict(0)[self.act_funcs[layer-1]]
-                if (not dropout_rate) or (layer == self.number_of_layers - 1):
-                    self.z_values[layer] = np.matmul(self.weights[layer-1], self.activations[layer-1]) + self.biases[layer]
+                if (self.validating == True):
+                    if (not dropout_rate) or (dropout_rate[layer-1] == 0):
+                        scale = 1
+                    else:
+                        scale = (1 - dropout_rate[layer-1]) #present with probability 1-p.
+                    self.z_values[layer] = np.matmul(self.weights[layer-1]*scale, self.activations[layer-1]) + self.biases[layer]
                     self.activations[layer] = activate(self.z_values[layer])
                 else:
-                    self.activations[layer], self.z_values[layer] = reg.dropout(self, activate, layer, dropout_rate[layer-1])
+                    self.z_values[layer] = np.matmul(self.weights[layer-1], self.activations[layer-1]) + self.biases[layer]
+                    self.activations[layer] = activate(self.z_values[layer])
+                    if (dropout_rate) and (dropout_rate[layer-1] != 0):
+                        self.activations[layer], self.z_values[layer] = reg.dropout(self.activations[layer], self.z_values[layer], dropout_rate[layer-1], self.parameters[layer])
 
     #computes the cost of an individual piece of training data and the overall average cost. Is this comment redundant?
     def compute_cost(self, cost_func):
@@ -126,7 +135,7 @@ class network:
     #tells us if the network is right or wrong.
     def evaluate(self):
         #the network's decision is the index of the highest number belonging to activation vector of the last layer.
-        #if there are two elements that are both the highest, it chooses randomly between them.
+        #if there are two elements that are both the highest, it chooses randomly between them (probably doesn't ever happen).
         decision = np.random.choice(np.where(self.activations[-1] == np.amax(self.activations[-1]))[0])
 
         if not self.validating:
@@ -137,13 +146,13 @@ class network:
         if (decision == answer):
             self.successes += 1 #woohoo!
 
-        if not self.validating:
+        if self.validating:
+            print("Validation", " | ", self.successes, " correct out of ", self.trials, " for a rate of: ", \
+             f"{(self.successes/self.trials)*100:.3f}%", " | ", "Guess: ", decision, " Answer: ", answer, " | ", "Avg cost: ", f"{sum(self.costs)/len(self.costs):.10f}")
+        else:
             print("Epoch: ", self.epoch, " | ", self.successes, " correct out of ", self.trials, " for a rate of: ", \
              f"{(self.successes/self.trials)*100:.3f}%", " | ", "Guess: ", decision, " Answer: ", answer, " | ", "Avg cost: ", f"{sum(self.costs)/len(self.costs):.10f}", \
              " | ", "Learning rate: ", round(self.learning_rate, 5))
-        else:
-            print("Validation", " | ", self.successes, " correct out of ", self.trials, " for a rate of: ", \
-             f"{(self.successes/self.trials)*100:.3f}%", " | ", "Guess: ", decision, " Answer: ", answer, " | ", "Avg cost: ", f"{sum(self.costs)/len(self.costs):.10f}")
 
     #At the beginning of each epoch, the training data is shuffled, so simply portioning up its array into chunks of batch_size is taking a random sample.
     #If a batch size is not specified, it defaults to stochastic gradient descent (i.e. the batch_size is 1.)
@@ -153,16 +162,13 @@ class network:
     def batch(self, batch_size, beta):
         if utils.batch_check(self, batch_size): #if the current batch is exhausted...
             self.iterations += 1
+            self.total_iterations += 1
             if (beta != 0): #if momentum is enabled...
-                if (self.iterations == 1):
-                    self.Vw = self.weights_batch
-                    self.Vb = self.biases_batch
-                elif (self.iterations > 1):
-                    self.Vw = beta*self.Vw + self.weights_batch
-                    self.Vb = beta*self.Vb + self.biases_batch
+                self.Vw = beta*self.Vw + self.weights_batch/batch_size
+                self.Vb = beta*self.Vb + self.biases_batch/batch_size
 
-                self.weights -= (self.learning_rate/batch_size)*self.Vw
-                self.biases -= (self.learning_rate/batch_size)*self.Vb
+                self.weights -= self.learning_rate*self.Vw
+                self.biases -= self.learning_rate*self.Vb
             else:
                 self.weights -= (self.learning_rate/batch_size)*self.weights_batch
                 self.biases -= (self.learning_rate/batch_size)*self.biases_batch
@@ -230,7 +236,6 @@ class network:
                 self.costs.clear()
                 self.validating = False
 
-    #beta is for smoothing
     def train(self, lr_func="constant", lr_params=0.0001, batch_size=1, epochs=10, beta=0, dropout=[], cost_func="quadratic"):
         while self.training:
             if self.validating:

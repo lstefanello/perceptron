@@ -10,17 +10,14 @@ def mnist_load(file, samples):
 def main():
     print("loading data...")
     samples = 10000
+    batch_size = 20
     train = mnist_load("mnist_train.csv", samples)
-    validate = mnist_load("mnist_test.csv", np.floor(samples/6))
+    validate = mnist_load("mnist_test.csv", samples)
 
-    structure = [784, 512, 10, 10]
-    activation_functions = ("relu", "relu", "softmax")
-    step_params = (samples/40, 0.01, 1/2)
-    #restart_params = (0.01, 0.001, 3/4)
+    structure = [784, 256, 128, 10, 10]
+    activation_functions = ("relu", "relu", "relu", "softmax")
+    restart_params = (0.0001, 0.01, .001, samples/(batch_size*2))
 
     network = pc.network(structure, activation_functions, train, validate)
-    #network.train(dropout=[.5,0], beta=0.9, lr_func="warm restarts", lr_params=restart_params, batch_size=20, epochs=30, cost_func="cross entropy")
-    #network.train(dropout=[.5,.3,0], beta=0.9, lr_func="step decay", lr_params=step_params, batch_size=20, epochs=30, cost_func="cross entropy")
-    network.train(dropout=[.5,0], beta=0.9, lr_func="const", lr_params=0.0001, batch_size=20, epochs=30, cost_func="cross entropy")
-
+    network.train(dropout=[.5,.5,0], beta=0.9, lr_func="warm restarts", lr_params=restart_params, batch_size=batch_size, epochs=20, cost_func="cross entropy")
 main()
