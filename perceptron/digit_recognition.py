@@ -14,7 +14,7 @@ def main():
     train = mnist_load("mnist_train.csv", samples)
     validate = mnist_load("mnist_test.csv", samples)
 
-    restart_params = (.0001, 0.1, 0.01, 2*samples/batch_size)
+    restart_params = (.0001, 0.01, 0.01, 2*samples/batch_size) #lower bound, upper bound, decay rate, cycle length.
     structure = [784, 256, 128, 10, 10]
     activation_functions = ("elu", "elu", "elu", "softmax")
     network = pc.network(structure, activation_functions, train, validate)
