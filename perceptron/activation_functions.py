@@ -1,13 +1,13 @@
-import cupy as cp
+import numpy as np
 
 def sigmoid(z):
-    return 1.0/(1.0 + cp.exp(-z))
+    return 1.0/(1.0 + np.exp(-z))
 
 def sigmoid_prime(z):
     return sigmoid(z)*(1-sigmoid(z))
 
 def tanh(z):
-    return ((2 / (1 + cp.exp(-2*z))) + 1)
+    return ((2 / (1 + np.exp(-2*z))) + 1)
 
 def tanh_prime(z):
     return 1 - tanh(z)**2
@@ -18,16 +18,16 @@ def relu(z):
             return x
         else:
             return 0
-    return cp.array([comp(i) for i in z])
+    return np.array([comp(i) for i in z])
 
 def relu_prime(z):
     def comp(x):
-        if (x < 0):
+        if (x <= 0):
              return 0
-        elif (x >= 0):
+        elif (x > 0):
             return 1
 
-    return cp.array([comp(i) for i in z])
+    return np.array([comp(i) for i in z])
 
 def leaky_relu(z):
     def comp(x):
@@ -35,7 +35,7 @@ def leaky_relu(z):
             return 0.1*x
         elif (x >= 0):
             return x
-    return cp.array([comp(i) for i in z])
+    return np.array([comp(i) for i in z])
 
 def leaky_relu_prime(z):
     def comp(x):
@@ -43,17 +43,35 @@ def leaky_relu_prime(z):
             return 0.1
         elif (x >= 0):
             return 1
-    return cp.array([comp(i) for i in z])
+    return np.array([comp(i) for i in z])
+
+def elu(z):
+    alpha = 1
+    def comp(x):
+        if (x > 0):
+            return x
+        elif (x <= 0):
+            return alpha*(np.exp(x) - 1)
+    return np.array([comp(i) for i in z])
+
+def elu_prime(z):
+    alpha = 1
+    def comp(x):
+        if (x > 0):
+            return 1
+        elif (x <= 0):
+            return alpha*np.exp(x)
+    return np.array([comp(i) for i in z])
 
 def softmax(z):
-    return cp.exp(z)/sum(cp.exp(z))
+    return np.exp(z)/sum(np.exp(z))
 
 def softmax_prime(z):
     #this is the diagonal of the jacobian.
     return softmax(z)*(1-softmax(z))
 
 def softmax_input_change(z):
-    dz_da = cp.zeros((z.shape[0], z.shape[0]))
+    dz_da = np.zeros((z.shape[0], z.shape[0]))
     for i in range(len(z)):
         tmp = []
         if (z[i] == 0):
@@ -69,7 +87,7 @@ def softmax_input_change(z):
                 else:
                     tmp.append(0)
 
-        dz_da[:,i] += cp.array(tmp)
+        dz_da[:,i] += np.array(tmp)
 
     return dz_da.diagonal()
 
@@ -80,6 +98,7 @@ def func_dict(order):
             "relu": relu,
             "l_relu": leaky_relu,
             "tanh": tanh,
+            "elu": elu,
         }
     elif (order == 1):
         dict = {
@@ -87,6 +106,7 @@ def func_dict(order):
             "relu": relu_prime,
             "l_relu": leaky_relu_prime,
             "tanh": tanh_prime,
+            "elu": elu_prime,
             "softmax": softmax_prime,
         }
     return dict

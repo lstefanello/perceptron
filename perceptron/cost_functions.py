@@ -1,4 +1,4 @@
-import cupy as cp
+import numpy as np
 
 def quadratic(model):
     return sum((model.activations[-1] - model.desired_output)**2)
@@ -7,8 +7,8 @@ def quadratic_derivative(model):
     return 2*(model.activations[-1] - model.desired_output)
 
 def cross_entropy(model):
-    log = cp.vectorize(cp.log)
-    return cp.dot(-1*model.desired_output, log(model.activations[-1]))
+    log = np.vectorize(np.log)
+    return -1*np.dot(model.desired_output, log(model.activations[-1]))
 
 def cross_entropy_derivative(model):
     return model.activations[-1] - model.desired_output

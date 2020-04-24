@@ -1,4 +1,4 @@
-import cupy as cp
+import numpy as np
 import utils
 
 def constant(model, learning_rate):
@@ -12,9 +12,9 @@ def warm_restarts(model, lb, ub, dc, its):
     global cycle_clock
     cycle_clock += 1
 
-    ub *= cp.exp(-1*dc*memory)
-    lb *= cp.exp(-1*dc*memory)
-    lr = lb + (1/2)*(ub - lb)*(1 + cp.cos((cycle_clock/its) * cp.pi))
+    ub *= np.exp(-1*dc*memory)
+    lb *= np.exp(-1*dc*memory)
+    lr = lb + (1/2)*(ub - lb)*(1 + np.cos((cycle_clock/its) * np.pi))
 
     if (cycle_clock/its == 1):
         memory = model.total_iterations
@@ -33,7 +33,7 @@ def step_decay(model, init, dc, its):
         return model.learning_rate
 
 def exp_decay(model, init, dc):
-    return init*cp.exp(-1*dc*model.total_iterations)
+    return init*np.exp(-1*dc*model.total_iterations)
 
 def func_dict():
     dict = {
