@@ -1,2 +1,2 @@
 # perceptron
-A simple package to make neural networks. Written in python and numpy.
+A simple package to make neural networks. Written in python and numpy. Perceptron is a generalized implementation of the gradient descent algorithm that allows users to build learning models. Users can build models of arbitrary dimension and choose, per layer, the number of neurons and which activation function to use. Users can also specify which loss function to use and a particular learning rate annealing. There are some regularization techniques built in like momentum and dropout. Data is automatically one-hot encoded. Run "python digit_recognition.py" to watch a model be trained to classify the MNIST data set.
