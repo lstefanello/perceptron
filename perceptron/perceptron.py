@@ -26,14 +26,14 @@ class network:
 
        #sets the biases for each neuron in the network as zeros, skipping the first layer because it is the input layer.
        #Biases are indexed the same as neurons; e.g. the kth neuron in the ith layer has bias[i][k].
-       self.biases = np.array([np.full((i, ),0) for i in self.parameters])
+       self.biases = np.array([np.full((i, ),0) for i in self.parameters], dtype = object)
 
        #There is a weight matrix that exists between each layer. Therefore there are num_layers - 1 weight matrices.
        #This randomly initilizes each weight matrix and appends them to a list associated with layer;
        #e.g. W^i is the matrix of weights that connects the neurons in layer i with the neurons in layer i+1.
        #(w_j,k)^i is the weight connecting the jth neuron in layer i+1 to the kth neuron in layer i.
        #So, the activation a neuron k belonging to layer i takes in the vector of weights w[i-1][k]. (the kth row of the weight matrix between this layer and the previous).
-       self.weights = np.array([np.random.randn(self.parameters[i+1], self.parameters[i]) for i in range(self.number_of_layers - 1)])
+       self.weights = np.array([np.random.randn(self.parameters[i+1], self.parameters[i]) for i in range(self.number_of_layers - 1)], dtype=object)
 
        for matrix in range(self.number_of_layers - 1):
            switcher = {
@@ -49,9 +49,9 @@ class network:
        #the z value is the dot product of weights & activations + bias quantity that gets sent to the activation function.
        #The z value of the kth neuron in the ith layer is z_values[i][k].
        #the activation of the kth neuron in the ith layer is activation(z_values[i][k]).
-       self.z_values = np.array([np.empty((i, )) for i in self.parameters])
-       self.z_primes = np.array([np.empty((i , )) for i in self.parameters])
-       self.activations = np.array([np.empty((i, )) for i in self.parameters]) #the output of the network at each layer. The activation of the kth neuron in the ith layer is activations[i][k].
+       self.z_values = np.array([np.empty((i, )) for i in self.parameters], dtype=object)
+       self.z_primes = np.array([np.empty((i , )) for i in self.parameters], dtype=object)
+       self.activations = np.array([np.empty((i, )) for i in self.parameters], dtype=object) #the output of the network at each layer. The activation of the kth neuron in the ith layer is activations[i][k].
        self.learning_rate = 0.1
        self.index = 0 #which piece of training data the network is looking at
 
@@ -67,12 +67,12 @@ class network:
        #the batch_size is the size of random sample we take from the training data.
        #the batches hold the average gradient of each weight and bias over the random sample.
        #after the batch is exhausted, the true weights and biases are updated and the batches are reset.
-       self.weights_batch = np.array([np.zeros((self.parameters[i+1], self.parameters[i])) for i in range(self.number_of_layers - 1)])
-       self.biases_batch = np.array([np.zeros((i, )) for i in self.parameters])
+       self.weights_batch = np.array([np.zeros((self.parameters[i+1], self.parameters[i])) for i in range(self.number_of_layers - 1)], dtype=object)
+       self.biases_batch = np.array([np.zeros((i, )) for i in self.parameters], dtype=object)
 
        #these are for momentum.
-       self.Vw = np.array([np.zeros((self.parameters[i+1], self.parameters[i])) for i in range(self.number_of_layers - 1)])
-       self.Vb =  np.array([np.zeros((i, )) for i in self.parameters])
+       self.Vw = np.array([np.zeros((self.parameters[i+1], self.parameters[i])) for i in range(self.number_of_layers - 1)], dtype=object)
+       self.Vb =  np.array([np.zeros((i, )) for i in self.parameters], dtype=object)
 
        self.batch_clock = 0
        self.iterations = 0 #an "iteration" is the completion of a minibatch; e.g. if there are 10,000 pieces of training data and the minibatch is 20, then there are 500 iterations in an epoch.
@@ -154,7 +154,7 @@ class network:
         else:
             print("Epoch: ", self.epoch, " | ", self.successes, " correct out of ", self.trials, " for a rate of: ", \
              f"{(self.successes/self.trials)*100:.3f}%", " | ", "Guess: ", decision, " Answer: ", answer, " | ", "Avg cost: ", f"{sum(self.costs)/len(self.costs):.10f}", \
-             " | ", "Learning rate: ", round(self.learning_rate, 5))
+             " | ", "Learning rate: ", round(self.learning_rate, 9))
 
     #At the beginning of each epoch, the training data is shuffled, so simply portioning up its array into chunks of batch_size is taking a random sample.
     #If a batch size is not specified, it defaults to stochastic gradient descent (i.e. the batch_size is 1.)
